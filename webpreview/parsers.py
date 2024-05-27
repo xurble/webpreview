@@ -146,6 +146,32 @@ def make_absolute_url(url: str, base_url: str) -> Optional[str]:
     return urlunparse(url_components)
 
 
+def extract_charset(html: str) -> str:
+    """Tries to extract the charset from the html"""
+
+    # Regex patterns to extract charset value
+    charset_pattern = r'<meta\s+charset=["\']([^"\']+)["\']'
+    content_charset_pattern = (
+                            r'<meta\s+(?:[^>]*?http-equiv=["\']'
+                            r'Content-Type["\'][^>]*?|[^>]*?content=["\']'
+                            r'[^>]*?charset=([^"\'>]+)[^>]*?){2,}'
+                        )
+
+    # Try to find <meta charset="...">
+    rematch = re.search(charset_pattern, html, re.IGNORECASE)
+    if rematch:
+        return rematch.group(1)
+
+    # Try to find <meta http-equiv="Content-Type" content="...charset=...">
+    rematch = re.search(content_charset_pattern, html, re.IGNORECASE)
+    if rematch:
+        charset_match = re.search(r'charset=([^"\';]+)', rematch.group(0), re.IGNORECASE)
+        if charset_match:
+            return charset_match.group(1)
+
+    return "utf-8"  # assume utf-8 if not present
+
+
 def retrieve_content(
     url: str, timeout: Optional[int] = None, headers: Optional[Dict[str, str]] = None
 ) -> str:
@@ -156,6 +182,13 @@ def retrieve_content(
 
     if res.status_code == 404:
         raise URLNotFound("The web page does not exist.")
+
+    if "charset" not in res.headers["Content-Type"]:
+        try:
+            encoding = extract_charset(res.text)
+            return res.content.decode(encoding)
+        except:
+            pass
 
     return res.text
 
